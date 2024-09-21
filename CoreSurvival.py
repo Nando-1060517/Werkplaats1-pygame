@@ -17,6 +17,8 @@ player_wood = 0
 player_stone = 0
 
 items_list = []
+bullet_list = []
+enemy_list = []
 
 #pos
 center = pygame.Vector2(display_info.current_w / 2, display_info.current_h / 2)
@@ -35,20 +37,28 @@ frame = 0
 #region Image import
 player_img = pygame.image.load('Sprites/Player/player_stat.png').convert_alpha()
 enemy_img = pygame.image.load('Sprites/Enemy/enemy_stat.png').convert_alpha()
-#haven't made a bullet img yet
-bullet_img = pygame.image.load('Sprites/Items/coin.png')
+bullet_img = pygame.image.load('Sprites/Items/bullet.png').convert_alpha()
 coin_img = pygame.image.load('Sprites/Items/coin.png').convert_alpha()
 #endregion
 #endregion
 
 #region Classes and functions
+def scale_image(img, image_scale):
+    scaled = pygame.Vector2(img.get_width() * image_scale, img.get_height() * image_scale)
+    scaled_img = pygame.transform.scale(img, scaled)
+    return scaled_img
+
 def random_pos():
     return pygame.Vector2(center.x + random.randint(-random_range_x, random_range_x), center.y + random.randint(-random_range_y, random_range_y))
 
+def get_mouse_pos():
+    pos = pygame.mouse.get_pos()
+    return pos
+
 class Player:
     def __init__(self):
-        #import
-        self.image = player_img
+        self.original_image = player_img
+        self.image = self.original_image
 
         #base variables
         self.speed = 10
@@ -65,8 +75,19 @@ class Player:
 
     def handle_input(self):
         keys = pygame.key.get_pressed()
+        if pygame.key.get_just_pressed()[pygame.K_SPACE]:
+            bullet_list.append(Bullet())
         self.move.x = (keys[pygame.K_d] - keys[pygame.K_a])
         self.move.y = (keys[pygame.K_s] - keys[pygame.K_w])
+
+    def rotate_self(self):
+        direction = pygame.Vector2(pygame.mouse.get_pos()) - pygame.Vector2(self.rect.center)
+        angle = math.degrees(math.atan2(direction.y, direction.x))
+
+        #convert img rot to face towards player with offset since wrong front plane
+        offset = -90
+        self.image = pygame.transform.rotate(self.original_image, -angle + offset)
+        self.rect = self.image.get_rect(center=self.rect.center)
 
     def collision(self):
         for item in items_list:
@@ -80,9 +101,64 @@ class Player:
 
     def manager(self):
         self.handle_input()
+        self.rotate_self()
         self.move_pos()
         self.draw()
         self.collision()
+
+class Bullet:
+    def __init__(self):
+        self.is_alive = True
+        self.original_image = bullet_img
+        self.image = self.original_image
+        self.image_size = 0.5
+
+        self.target_pos = get_mouse_pos()
+        self.speed = 25
+
+        self.move = pygame.Vector2(0, 0)
+        self.pos = pygame.Vector2(player.pos.x - (player.rect.width / 2), player.pos.y - (player.rect.height / 2))
+        self.rect = pygame.Rect(self.pos.x, self.pos.y, self.image.width, self.image.height)
+
+        self.direction = self.target(self.target_pos)
+        self.rotate_self(self.target_pos)
+
+    def rotate_self(self, target_pos):
+        direction = pygame.Vector2(target_pos) - pygame.Vector2(self.rect.center)
+        angle = math.degrees(math.atan2(direction.y, direction.x))
+
+        #convert img rot to face towards player with offset since wrong front plane
+        offset = -90
+        self.image = pygame.transform.rotate(self.original_image, -angle + offset)
+        self.image = scale_image(self.image, self.image_size)
+        self.rect = self.image.get_rect(center=self.rect.center)
+
+    def target(self, target_pos):
+        current_pos = pygame.math.Vector2(self.rect.centerx, self.rect.centery)
+        target = pygame.math.Vector2(target_pos)
+        direction = target - current_pos
+
+        direction.normalize_ip()
+        return direction
+
+    def move_bullet(self):
+        self.rect.topleft += self.direction * self.speed
+
+    def collision(self):
+        for enemy in enemy_list:
+            collided = self.rect.colliderect(enemy)
+            if collided:
+                enemy_list.remove(enemy)
+                self.is_alive = False
+
+    def draw(self):
+        pygame.draw.rect(screen, 'red', self.rect, 2) #border
+        screen.blit(self.image, self.rect)
+
+    def manager(self):
+        self.move_bullet()
+        self.collision()
+        self.draw()
 
 #region Item Classes
 class Item:
@@ -118,24 +194,18 @@ def draw_items():
 
 class Enemy:
     def __init__(self):
-        #Gets image and scales it down and add rot
+        self.max_dist = 250
+        self.min_dist = 50
         self.original_image = enemy_img
         self.image = self.original_image
-        self.image = pygame.transform.rotate(self.image, 0)
 
-        #Get pos
         self.current_pos = random_pos()
-        self.rect = pygame.Rect(self.current_pos.x, self.current_pos.y, 1, 1)
+        self.rect = pygame.Rect(self.current_pos.x, self.current_pos.y, self.image.width, self.image.height)
 
         #enemy base stats
         self.enemy_health = 100
 
-    def draw(self):
-        #Change this so instead of check player pos compared to enemy, rotate enemy ONLY when chasing
-        screen.blit(self.image, self.rect)
-
     def rot_enemy(self, target_pos):
-        #get player pos and change to angle
         direction = pygame.Vector2(target_pos) - pygame.Vector2(self.rect.center)
         angle = math.degrees(math.atan2(direction.y, direction.x))
 
@@ -147,8 +217,6 @@ class Enemy:
     def move_towards(self, target_pos):
         current_pos = pygame.math.Vector2(self.rect.x, self.rect.y)
         distance = current_pos.distance_to(target_pos)
-        max_dist = 250
-        min_dist = 50
         direction = target_pos - current_pos
 
         try:
@@ -156,16 +224,21 @@ class Enemy:
         except ValueError:
             return "Cant normalize vector of zero"
 
-        if distance <= max_dist:
-            if distance <= min_dist:
+        if distance <= self.max_dist:
+            if distance <= self.min_dist:
                 return
             else:
                 self.rot_enemy(target_pos)
                 self.rect.topleft += direction * 5
 
+    def draw(self):
+        pygame.draw.rect(screen, 'red', self.rect, 5) #border
+        screen.blit(self.image, self.rect)
+
     def manager(self, target_pos):
         self.draw()
         self.move_towards(target_pos)
+
 #endregion
 
 #region --- initialization ---
@@ -195,8 +268,14 @@ while running:
 
     #region Objects
     player.manager()
-    draw_items()
 
+    for bullet in bullet_list:
+        if bullet.is_alive:
+            Bullet.manager(bullet)
+        else:
+            bullet_list.remove(bullet)
+
+    draw_items()
     for enemies in enemy_list:
         Enemy.manager(enemies, player.pos)
     #endregion
