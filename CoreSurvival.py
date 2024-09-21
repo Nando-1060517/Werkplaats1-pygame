@@ -5,7 +5,7 @@ import random
 
 pygame.init()
 
-#region variables
+#region --- variables ---
 #main loop
 running = True
 display_info = pygame.display.Info()
@@ -29,26 +29,30 @@ random_range_y = 350
 UI_Manager = pygame_gui.UIManager((display_info.current_w, display_info.current_h))
 UI_items = pygame_gui.elements.UITextBox('', pygame.Rect(0, 0, 300, 100), UI_Manager)
 UI_pos = pygame_gui.elements.UITextBox('', pygame.Rect(300, 0, 300, 100), UI_Manager)
+UI_mouse_pos = pygame_gui.elements.UITextBox('', pygame.Rect(0, 0, 100, 75))
 
 TIMER_EVENT = pygame.USEREVENT + 1
 pygame.time.set_timer(TIMER_EVENT, 500)
 frame = 0
 
 #region Image import
-idle_player_image = pygame.image.load('Sprites/Player/player_stat.png').convert_alpha()
-shooting_player_image = pygame.image.load('Sprites/Player/player_aim.png').convert_alpha()
 
-enemy_img = pygame.image.load('Sprites/Enemy/enemy_stat.png').convert_alpha()
-bullet_img = pygame.image.load('Sprites/Items/bullet.png').convert_alpha()
-coin_img = pygame.image.load('Sprites/Items/coin.png').convert_alpha()
-#endregion
-#endregion
-
-#region Classes and functions
 def scale_image(img, image_scale):
     scaled = pygame.Vector2(img.get_width() * image_scale, img.get_height() * image_scale)
     scaled_img = pygame.transform.scale(img, scaled)
     return scaled_img
+
+IMAGE_OFFSET = -90
+idle_player_image = pygame.image.load('Sprites/Player/player_stat.png').convert_alpha()
+shooting_player_image = pygame.image.load('Sprites/Player/player_aim.png').convert_alpha()
+
+enemy_img = pygame.image.load('Sprites/Enemy/enemy_stat.png').convert_alpha()
+bullet_img = scale_image(pygame.image.load('Sprites/Items/bullet.png').convert_alpha(), 0.3)
+coin_img = pygame.image.load('Sprites/Items/coin.png').convert_alpha()
+#endregion
+#endregion
+
+#region --- Classes and functions ---
 
 def random_pos():
     return pygame.Vector2(center.x + random.randint(-random_range_x, random_range_x), center.y + random.randint(-random_range_y, random_range_y))
@@ -57,8 +61,27 @@ def get_mouse_pos():
     pos = pygame.mouse.get_pos()
     return pos
 
+def get_direction(target, current):
+    return pygame.Vector2(target) - current
+
+def rotate_img(target_pos, current_pos, offset):
+    # get angle by taking direction converting that in radians and then the radian to degrees
+    # offset want sprites zijn richting boven gemaakt terwijl default rechts is
+
+    direction = get_direction(target_pos, current_pos)
+    # calculate direction by subtracting current pos from mouse pos
+    # mouse_pos [1500, 700] - current_pos [700, 450] = direction [800, 250]
+
+    angle = math.degrees(math.atan2(direction.y, direction.x))
+    # [direction.y / direction.x] [250 / 800] = arc tangent is 0.3125
+    # 0.3125 * (180 / pi) = angle is 17,9 graden
+
+    return -angle + offset
+
 class Player:
     def __init__(self):
+        self.speed = 10
+
         self.original_idle_img = idle_player_image
         self.idle_img = self.original_idle_img
 
@@ -68,9 +91,6 @@ class Player:
         self.current_state = 'idle'
         self.current_image = self.idle_img
         self.current_original_image = self.original_idle_img
-
-        #base variables
-        self.speed = 10
 
         #pos
         self.move = pygame.Vector2(0, 0)
@@ -88,22 +108,6 @@ class Player:
             bullet_list.append(Bullet())
         self.move.x = (keys[pygame.K_d] - keys[pygame.K_a])
         self.move.y = (keys[pygame.K_s] - keys[pygame.K_w])
-
-    def rotate_self(self):
-        #get angle by taking direction converting that in radians and then the radian to degrees
-
-        direction = pygame.Vector2(get_mouse_pos()) - pygame.Vector2(self.rect.center)
-        #calculate direction by subtracting current pos from mouse pos
-        #mouse_pos [1500, 700] - current_pos [700, 450] = direction [800, 250]
-
-        offset = -90
-        #offset want sprites zijn richting boven gemaakt terwijl default rechts is
-
-        angle = math.degrees(math.atan2(direction.y, direction.x))
-        #[direction.y / direction.x] [250 / 800] = arc tangent is 0.3125
-        # 0.3125 * (180 / pi) = angle is 17,9 graden
-
-        self.current_image = pygame.transform.rotate(self.current_original_image, -angle + offset)
 
     def collision(self):
         for item in items_list:
@@ -129,47 +133,33 @@ class Player:
             self.current_image = self.idle_img
 
         self.move_pos()
-        self.rotate_self()
+        self.current_image = pygame.transform.rotate(self.current_image, rotate_img(get_mouse_pos(), self.rect.center, IMAGE_OFFSET))
         self.draw()
         self.collision()
 
 class Bullet:
     def __init__(self):
         self.is_alive = True
+        self.speed = 5
+
         self.original_image = bullet_img
         self.image = self.original_image
-        self.image_size = 0.5
 
-        self.target_pos = get_mouse_pos()
-        self.speed = 25
+        self.rect = self.original_image.get_rect()
+        self.rect.center = player.rect.center
 
-        self.move = pygame.Vector2(0, 0)
-        self.pos = pygame.Vector2(player.pos.x - (player.rect.width / 2), player.pos.y - (player.rect.height / 2))
-        self.rect = pygame.Rect(self.pos.x, self.pos.y, self.image.width, self.image.height)
+        self.direction = get_direction(get_mouse_pos(), self.rect.center)
+        print(f'mousepos: {get_mouse_pos()} - current_pos: {self.rect.center} = direction: {self.direction}')
+        self.direction.normalize_ip()
+        print(f'normalized direciton: {self.direction}')
+        self.image = pygame.transform.rotate(self.original_image, rotate_img(get_mouse_pos(), self.rect.center, IMAGE_OFFSET))
 
-        self.direction = self.target(self.target_pos)
-        self.rotate_self(self.target_pos)
-
-    def rotate_self(self, target_pos):
-        direction = pygame.Vector2(target_pos) - pygame.Vector2(self.rect.center)
-        angle = math.degrees(math.atan2(direction.y, direction.x))
-
-        #convert img rot to face towards player with offset since wrong front plane
-        offset = -90
-        self.image = pygame.transform.rotate(self.original_image, -angle + offset)
-        self.image = scale_image(self.image, self.image_size)
-        self.rect = self.image.get_rect(center=self.rect.center)
-
-    def target(self, target_pos):
-        current_pos = pygame.math.Vector2(self.rect.centerx, self.rect.centery)
-        target = pygame.math.Vector2(target_pos)
-        direction = target - current_pos
-
-        direction.normalize_ip()
-        return direction
-
-    def move_bullet(self):
-        self.rect.topleft += self.direction * self.speed
+    def move_self(self):
+        #print(self.rect.center)
+        self.rect.center += self.direction * self.speed
+        #self.rect.center = [x, y]
+        #self.target_pos = [mouse_pos [x, y], []]
+        #self.speed = [int speed = 5]
 
     def collision(self):
         for enemy in enemy_list:
@@ -177,13 +167,17 @@ class Bullet:
             if collided:
                 enemy_list.remove(enemy)
                 self.is_alive = False
+            if self.rect.x <= 0 or self.rect.x >= display_info.current_w or self.rect.y <= 0 or self.rect.y > display_info.current_h:
+                for bul in bullet_list:
+                    print(f'[{bullet_list.index(bul)}]: {bul.rect}')
+                self.is_alive = False
 
     def draw(self):
         pygame.draw.rect(screen, 'red', self.rect, 2) #border
         screen.blit(self.image, self.rect)
 
     def manager(self):
-        self.move_bullet()
+        self.move_self()
         self.collision()
         self.draw()
 
@@ -279,7 +273,7 @@ player = Player()
 #endregion
 #endregion
 
-#region Main loop
+#region --- Main loop ---
 while running:
     #region event loop
     #check for exit and refresh screen by filling with background
@@ -308,8 +302,12 @@ while running:
     #endregion
 
     #region UI
+    mousex, mousey = get_mouse_pos()
+    UI_mouse_pos.rect = pygame.Rect(mousex, mousey, 200, 100)
     UI_items.set_text(f'Coins: {player_coins}\nWood: {player_wood}\nStone: {player_stone}')
     UI_pos.set_text(f'posX: {player.pos.x}\nPosY: {player.pos.y}')
+    anle = rotate_img(get_mouse_pos(), player.rect.center, IMAGE_OFFSET)
+    UI_mouse_pos.set_text(f' mousepos: {mousex}, {mousey}\n angle: {-anle:.2f}')
     UI_Manager.update(clock.tick(60)/1000.0)
     UI_Manager.draw_ui(screen)
     #endregion
