@@ -35,7 +35,9 @@ pygame.time.set_timer(TIMER_EVENT, 500)
 frame = 0
 
 #region Image import
-player_img = pygame.image.load('Sprites/Player/player_stat.png').convert_alpha()
+idle_player_image = pygame.image.load('Sprites/Player/player_stat.png').convert_alpha()
+shooting_player_image = pygame.image.load('Sprites/Player/player_aim.png').convert_alpha()
+
 enemy_img = pygame.image.load('Sprites/Enemy/enemy_stat.png').convert_alpha()
 bullet_img = pygame.image.load('Sprites/Items/bullet.png').convert_alpha()
 coin_img = pygame.image.load('Sprites/Items/coin.png').convert_alpha()
@@ -57,8 +59,15 @@ def get_mouse_pos():
 
 class Player:
     def __init__(self):
-        self.original_image = player_img
-        self.image = self.original_image
+        self.original_idle_img = idle_player_image
+        self.idle_img = self.original_idle_img
+
+        self.original_shooting_img = shooting_player_image
+        self.shooting_img = self.original_shooting_img
+
+        self.current_state = 'idle'
+        self.current_image = self.idle_img
+        self.current_original_image = self.original_idle_img
 
         #base variables
         self.speed = 10
@@ -66,7 +75,7 @@ class Player:
         #pos
         self.move = pygame.Vector2(0, 0)
         self.pos = pygame.Vector2(center.x, center.y)
-        self.rect = pygame.Rect(self.pos.x, self.pos.y, self.image.width, self.image.height)
+        self.rect = pygame.Rect(self.pos.x, self.pos.y, self.current_original_image.get_width(), self.current_original_image.get_height())
 
     def move_pos(self):
         self.pos.x += self.move.x * self.speed
@@ -81,13 +90,20 @@ class Player:
         self.move.y = (keys[pygame.K_s] - keys[pygame.K_w])
 
     def rotate_self(self):
-        direction = pygame.Vector2(pygame.mouse.get_pos()) - pygame.Vector2(self.rect.center)
-        angle = math.degrees(math.atan2(direction.y, direction.x))
+        #get angle by taking direction converting that in radians and then the radian to degrees
 
-        #convert img rot to face towards player with offset since wrong front plane
+        direction = pygame.Vector2(get_mouse_pos()) - pygame.Vector2(self.rect.center)
+        #calculate direction by subtracting current pos from mouse pos
+        #mouse_pos [1500, 700] - current_pos [700, 450] = direction [800, 250]
+
         offset = -90
-        self.image = pygame.transform.rotate(self.original_image, -angle + offset)
-        self.rect = self.image.get_rect(center=self.rect.center)
+        #offset want sprites zijn richting boven gemaakt terwijl default rechts is
+
+        angle = math.degrees(math.atan2(direction.y, direction.x))
+        #[direction.y / direction.x] [250 / 800] = arc tangent is 0.3125
+        # 0.3125 * (180 / pi) = angle is 17,9 graden
+
+        self.current_image = pygame.transform.rotate(self.current_original_image, -angle + offset)
 
     def collision(self):
         for item in items_list:
@@ -96,13 +112,24 @@ class Player:
                 items_list.remove(item)
 
     def draw(self):
-        pygame.draw.rect(screen, 'red', self.rect, 5) #border
-        screen.blit(self.image, self.rect) #img
+        pygame.draw.rect(screen, 'red', self.rect, 5)
+        screen.blit(self.current_image, (
+        self.rect.centerx - self.current_image.get_width() / 2, self.rect.centery - self.current_image.get_height() / 2))
 
     def manager(self):
         self.handle_input()
-        self.rotate_self()
+
+        if self.move:
+            self.current_state = 'shooting'
+            self.current_original_image = self.original_shooting_img
+            self.current_image = self.shooting_img
+        else:
+            self.current_state = 'idle'
+            self.current_original_image = self.original_idle_img
+            self.current_image = self.idle_img
+
         self.move_pos()
+        self.rotate_self()
         self.draw()
         self.collision()
 
@@ -160,38 +187,6 @@ class Bullet:
         self.collision()
         self.draw()
 
-#region Item Classes
-class Item:
-    def __init__(self):
-        self.pos = random_pos()
-        self.coin_img = coin_img
-        self.rect = pygame.Rect(self.pos.x, self.pos.y, self.coin_img.get_width(), self.coin_img.get_height())
-
-class Coins(Item):
-    def draw(self):
-        pygame.draw.rect(screen, 'red', self.rect, 5)
-        screen.blit(self.coin_img, self.pos)
-
-class Wood(Item):
-    def draw(self):
-        pygame.draw.rect(screen, 'red', self.rect, 5)
-        screen.blit(self.coin_img, self.pos)
-
-class Stone(Item):
-    def draw(self):
-        pygame.draw.rect(screen, 'red', self.rect, 5)
-        screen.blit(self.coin_img, self.pos)
-
-for _ in range(10):
-    items_list.append(Stone())
-    items_list.append(Wood())
-    items_list.append(Coins())
-
-def draw_items():
-    for item in items_list:
-        item.draw()
-#endregion
-
 class Enemy:
     def __init__(self):
         self.max_dist = 250
@@ -238,6 +233,38 @@ class Enemy:
     def manager(self, target_pos):
         self.draw()
         self.move_towards(target_pos)
+
+#region Item Classes
+class Item:
+    def __init__(self):
+        self.pos = random_pos()
+        self.coin_img = coin_img
+        self.rect = pygame.Rect(self.pos.x, self.pos.y, self.coin_img.get_width(), self.coin_img.get_height())
+
+class Coins(Item):
+    def draw(self):
+        pygame.draw.rect(screen, 'red', self.rect, 5)
+        screen.blit(self.coin_img, self.pos)
+
+class Wood(Item):
+    def draw(self):
+        pygame.draw.rect(screen, 'red', self.rect, 5)
+        screen.blit(self.coin_img, self.pos)
+
+class Stone(Item):
+    def draw(self):
+        pygame.draw.rect(screen, 'red', self.rect, 5)
+        screen.blit(self.coin_img, self.pos)
+
+for _ in range(10):
+    items_list.append(Stone())
+    items_list.append(Wood())
+    items_list.append(Coins())
+
+def draw_items():
+    for item in items_list:
+        item.draw()
+#endregion
 
 #endregion
 
