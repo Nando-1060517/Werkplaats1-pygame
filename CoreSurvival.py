@@ -29,7 +29,7 @@ random_range_y = 350
 UI_Manager = pygame_gui.UIManager((display_info.current_w, display_info.current_h))
 UI_items = pygame_gui.elements.UITextBox('', pygame.Rect(0, 0, 300, 100), UI_Manager)
 UI_pos = pygame_gui.elements.UITextBox('', pygame.Rect(300, 0, 300, 100), UI_Manager)
-UI_mouse_pos = pygame_gui.elements.UITextBox('', pygame.Rect(0, 0, 100, 75))
+UI_mouse_pos = pygame_gui.elements.UITextBox('', pygame.Rect(0, 0, 0, 0), UI_Manager)
 
 TIMER_EVENT = pygame.USEREVENT + 1
 pygame.time.set_timer(TIMER_EVENT, 500)
@@ -80,7 +80,7 @@ def rotate_img(target_pos, current_pos, offset):
 
 class Player:
     def __init__(self):
-        self.speed = 10
+        self.speed = 3
 
         self.original_idle_img = idle_player_image
         self.idle_img = self.original_idle_img
@@ -140,26 +140,30 @@ class Player:
 class Bullet:
     def __init__(self):
         self.is_alive = True
-        self.speed = 5
+        self.speed = 25
 
         self.original_image = bullet_img
         self.image = self.original_image
 
         self.rect = self.original_image.get_rect()
-        self.rect.center = player.rect.center
+        self.pos = pygame.Vector2(player.pos)
 
-        self.direction = get_direction(get_mouse_pos(), self.rect.center)
-        print(f'mousepos: {get_mouse_pos()} - current_pos: {self.rect.center} = direction: {self.direction}')
-        self.direction.normalize_ip()
-        print(f'normalized direciton: {self.direction}')
-        self.image = pygame.transform.rotate(self.original_image, rotate_img(get_mouse_pos(), self.rect.center, IMAGE_OFFSET))
+        self.direction = get_direction(get_mouse_pos(), player.rect.center)
+        self.normalized_direction = self.direction
+        #region normalize direction
+        try:
+            self.normalized_direction.normalize_ip()
+        except ValueError:
+            print(f'Cannot normalize vector 0')
+        #endregion
+
+        self.target = get_mouse_pos()
+        self.angle = math.degrees(math.atan2(self.direction.y, self.direction.x))
+        self.angle = -self.angle + IMAGE_OFFSET
 
     def move_self(self):
-        #print(self.rect.center)
-        self.rect.center += self.direction * self.speed
-        #self.rect.center = [x, y]
-        #self.target_pos = [mouse_pos [x, y], []]
-        #self.speed = [int speed = 5]
+        self.pos += self.direction * self.speed
+        self.rect.center = self.pos
 
     def collision(self):
         for enemy in enemy_list:
@@ -168,8 +172,8 @@ class Bullet:
                 enemy_list.remove(enemy)
                 self.is_alive = False
             if self.rect.x <= 0 or self.rect.x >= display_info.current_w or self.rect.y <= 0 or self.rect.y > display_info.current_h:
-                for bul in bullet_list:
-                    print(f'[{bullet_list.index(bul)}]: {bul.rect}')
+                for bul in bullet_list:...
+                    #print(f'[{bullet_list.index(bul)}]: {bul.rect}')
                 self.is_alive = False
 
     def draw(self):
@@ -178,8 +182,9 @@ class Bullet:
 
     def manager(self):
         self.move_self()
-        self.collision()
+        self.image = pygame.transform.rotate(self.original_image, self.angle)
         self.draw()
+        self.collision()
 
 class Enemy:
     def __init__(self):
@@ -303,11 +308,10 @@ while running:
 
     #region UI
     mousex, mousey = get_mouse_pos()
-    UI_mouse_pos.rect = pygame.Rect(mousex, mousey, 200, 100)
+    UI_mouse_pos.rect = pygame.Rect(mousex, mousey, 200, 200)
     UI_items.set_text(f'Coins: {player_coins}\nWood: {player_wood}\nStone: {player_stone}')
     UI_pos.set_text(f'posX: {player.pos.x}\nPosY: {player.pos.y}')
-    anle = rotate_img(get_mouse_pos(), player.rect.center, IMAGE_OFFSET)
-    UI_mouse_pos.set_text(f' mousepos: {mousex}, {mousey}\n angle: {-anle:.2f}')
+    UI_mouse_pos.set_text(f'playerpos: {player.rect.centerx},{player.rect.centery}\nmousepos: {mousex}, {mousey}\ndistance: {get_direction(get_mouse_pos(), player.rect.center)}\n')
     UI_Manager.update(clock.tick(60)/1000.0)
     UI_Manager.draw_ui(screen)
     #endregion
