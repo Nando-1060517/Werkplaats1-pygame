@@ -6,36 +6,50 @@ import random
 pygame.init()
 
 #region --- variables ---
-#main loop
+#region --main loop variables--
+start_ticks = pygame.time.get_ticks()
 running = True
 display_info = pygame.display.Info()
-screen = pygame.display.set_mode(pygame.Vector2(display_info.current_w, display_info.current_h))
+screen = pygame.display.set_mode(pygame.Vector2(display_info.current_w, display_info.current_h), pygame.FULLSCREEN)
 clock = pygame.time.Clock()
+#endregion
 
+#region --player stats--
+player_points = 0
 player_coins = 0
 player_wood = 0
 player_stone = 0
+#endregion
 
+#region --list initialization--
 items_list = []
 bullet_list = []
 enemy_list = []
+#endregion
 
-#pos
+#region --positional initialization--
 center = pygame.Vector2(display_info.current_w / 2, display_info.current_h / 2)
-random_range_x = 700
-random_range_y = 350
+random_range_x = display_info.current_w
+random_range_y = display_info.current_h
+#endregion
 
-#UI
+#region --UI initialization--
 UI_Manager = pygame_gui.UIManager((display_info.current_w, display_info.current_h))
-UI_items = pygame_gui.elements.UITextBox('', pygame.Rect(0, 0, 300, 100), UI_Manager)
-UI_pos = pygame_gui.elements.UITextBox('', pygame.Rect(300, 0, 300, 100), UI_Manager)
+UI_items = pygame_gui.elements.UITextBox('', pygame.Rect(0, 0, 100, 100), UI_Manager)
 UI_mouse_pos = pygame_gui.elements.UITextBox('', pygame.Rect(0, 0, 0, 0), UI_Manager)
+UI_info = pygame_gui.elements.UITextBox('esc: close game\n'
+                                        'wasd: walking\n'
+                                        'mouse: aiming\n'
+                                        'Spacebar: shooting\n', pygame.Rect(display_info.current_w - 300, 0, 300, 150), UI_Manager)
+#endregion
 
+#region --EVENT--
 TIMER_EVENT = pygame.USEREVENT + 1
 pygame.time.set_timer(TIMER_EVENT, 500)
 frame = 0
+#endregion
 
-#region Image import
+#region --image initialization--
 
 def scale_image(img, image_scale):
     scaled = pygame.Vector2(img.get_width() * image_scale, img.get_height() * image_scale)
@@ -53,9 +67,8 @@ coin_img = pygame.image.load('Sprites/Items/coin.png').convert_alpha()
 #endregion
 
 #region --- Classes and functions ---
-
 def random_pos():
-    return pygame.Vector2(center.x + random.randint(-random_range_x, random_range_x), center.y + random.randint(-random_range_y, random_range_y))
+    return pygame.Vector2(random.randint(0, display_info.current_w), random.randint(0, display_info.current_h))
 
 def get_mouse_pos():
     pos = pygame.mouse.get_pos()
@@ -103,17 +116,25 @@ class Player:
         self.rect.center = (self.pos.x, self.pos.y)
 
     def handle_input(self):
+        global running
         keys = pygame.key.get_pressed()
+        if keys[pygame.K_ESCAPE]:
+            print(f'user input, Exit game')
+            running = False
         if pygame.key.get_just_pressed()[pygame.K_SPACE]:
             bullet_list.append(Bullet())
         self.move.x = (keys[pygame.K_d] - keys[pygame.K_a])
         self.move.y = (keys[pygame.K_s] - keys[pygame.K_w])
 
     def collision(self):
+        global player_points
+        global player_coins
         for item in items_list:
             collided = self.rect.colliderect(item)
             if collided:
                 items_list.remove(item)
+                player_points += 9
+                player_coins += 10
 
     def draw(self):
         pygame.draw.rect(screen, 'red', self.rect, 5)
@@ -166,14 +187,19 @@ class Bullet:
         self.rect.center = self.pos
 
     def collision(self):
+        global player_points
+        global player_coins
         for enemy in enemy_list:
             collided = self.rect.colliderect(enemy)
             if collided:
                 enemy_list.remove(enemy)
+                #Get points per hit, buying items or doing something
+                player_points += 18
+                #Get coins after killing a enemy
+                player_coins += 5
                 self.is_alive = False
-            if self.rect.x <= 0 or self.rect.x >= display_info.current_w or self.rect.y <= 0 or self.rect.y > display_info.current_h:
-                for bul in bullet_list:...
-                    #print(f'[{bullet_list.index(bul)}]: {bul.rect}')
+            if (self.rect.x <= 0 or self.rect.x >= display_info.current_w or
+                    self.rect.y <= 0 or self.rect.y > display_info.current_h):
                 self.is_alive = False
 
     def draw(self):
@@ -233,7 +259,7 @@ class Enemy:
         self.draw()
         self.move_towards(target_pos)
 
-#region Item Classes
+#region -- item classes --
 class Item:
     def __init__(self):
         self.pos = random_pos()
@@ -264,16 +290,15 @@ def draw_items():
     for item in items_list:
         item.draw()
 #endregion
-
 #endregion
 
 #region --- initialization ---
-#region initializing enemies
+#region -- initializing enemies --
 enemy_amount = 10
 enemy_list = [Enemy() for enemies in range(enemy_amount)]
 #endregion
 
-#region initializing player
+#region -- initializing player --
 player = Player()
 #endregion
 #endregion
@@ -281,7 +306,6 @@ player = Player()
 #region --- Main loop ---
 while running:
     #region event loop
-    #check for exit and refresh screen by filling with background
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
@@ -292,7 +316,7 @@ while running:
     screen.fill('green')
     #endregion
 
-    #region Objects
+    #region --object update--
     player.manager()
 
     for bullet in bullet_list:
@@ -302,15 +326,19 @@ while running:
             bullet_list.remove(bullet)
 
     draw_items()
+
     for enemies in enemy_list:
         Enemy.manager(enemies, player.pos)
     #endregion
 
-    #region UI
+    #region --UI update--
     mousex, mousey = get_mouse_pos()
-    UI_mouse_pos.rect = pygame.Rect(mousex, mousey, 200, 200)
-    UI_items.set_text(f'Coins: {player_coins}\nWood: {player_wood}\nStone: {player_stone}')
-    UI_pos.set_text(f'posX: {player.pos.x}\nPosY: {player.pos.y}')
+    UI_mouse_pos.rect = pygame.Rect(mousex, mousey, 200, 100)
+    seconds = (pygame.time.get_ticks()-start_ticks)/1000
+    minutes = int(seconds // 60)
+    seconds = int(seconds % 60)
+    formatted_time = f"{minutes:02}:{seconds:02}"
+    UI_items.set_text(f'Time: {formatted_time} \npoints: {player_points}\ncoins: {player_coins}')
     UI_mouse_pos.set_text(f'playerpos: {player.rect.centerx},{player.rect.centery}\nmousepos: {mousex}, {mousey}\ndistance: {get_direction(get_mouse_pos(), player.rect.center)}\n')
     UI_Manager.update(clock.tick(60)/1000.0)
     UI_Manager.draw_ui(screen)
